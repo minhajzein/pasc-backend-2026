@@ -81,8 +81,13 @@ export async function listLeaguePlayers(req: Request, res: Response): Promise<vo
     const skip = Math.max(0, parseInt(String(req.query.skip), 10) || 0);
 
     const players = await Player.find({
-      "leagueRegistrations.league": leagueDoc._id,
-      status: { $in: ["pending", "verified"] },
+      status: "verified",
+      leagueRegistrations: {
+        $elemMatch: {
+          league: leagueDoc._id,
+          eligible: true,
+        },
+      },
     })
       .select("fullName photo leagueRegistrations")
       .sort({ fullName: 1 })

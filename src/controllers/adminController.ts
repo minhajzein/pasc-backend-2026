@@ -4,6 +4,7 @@ import jwt from "jsonwebtoken";
 import * as bcrypt from "bcrypt";
 import { Player } from "../models/Player";
 import { Team } from "../models/Team";
+import { League } from "../models/League";
 import { Admin } from "../models/Admin";
 import { env } from "../config/env";
 const LEAGUES = ["ppl", "pcl", "pvl", "pbl"] as const;
@@ -167,4 +168,46 @@ export async function setTeamStatus(req: Request, res: Response): Promise<void> 
   }
 
   res.json(team);
+}
+
+/** PATCH /api/admin/players/:id/league-registration - update eligible for a player's league registration (admin only) */
+export async function updatePlayerLeagueRegistration(req: Request, res: Response): Promise<void> {
+  const rawId = req.params.id;
+  const id = Array.isArray(rawId) ? rawId[0] : rawId;
+  const body = req.body as { leagueSlug?: string; eligible?: boolean };
+
+  if (!id || !mongoose.Types.ObjectId.isValid(id)) {
+    res.status(400).json({ error: "Valid player id required" });
+    return;
+  }
+  const leagueSlug = typeof body.leagueSlug === "string" ? body.leagueSlug.trim().toLowerCase() : "";
+  if (!leagueSlug || !LEAGUES.includes(leagueSlug as (typeof LEAGUES)[number])) {
+    res.status(400).json({ error: "Valid league slug (ppl, pcl, pvl, pbl) required" });
+    return;
+  }
+  if (typeof body.eligible !== "boolean") {
+    res.status(400).json({ error: "eligible (boolean) required" });
+    return;
+  }
+
+  const leagueDoc = await League.findOne({ slug: leagueSlug }).select("_id").lean();
+  if (!leagueDoc) {
+    res.status(404).json({ error: "League not found" });
+    return;
+  }
+
+  const result = await Player.updateOne(
+    { _id: id, "leagueRegistrations.league": leagueDoc._id },
+    { $set: { "leagueRegistrations.$.eligible": body.eligible } }
+  );
+
+  if (result.matchedCount === 0) {
+    res.status(404).json({ error: "Player or league registration not found" });
+    return;
+  }
+
+  const player = await Player.findById(id)
+    .populate("leagueRegistrations.league", "name slug")
+    .lean();
+  res.json(player);
 }

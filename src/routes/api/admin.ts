@@ -8,6 +8,7 @@ import {
   getTeamById,
   setPlayerStatus,
   setTeamStatus,
+  updatePlayerLeagueRegistration,
 } from "../../controllers/adminController";
 
 const router: IRouter = Router();
@@ -19,6 +20,7 @@ router.use(requireAdmin);
 router.get("/players/pending", listPendingPlayers);
 router.get("/players/:id", getPlayerById);
 router.patch("/players/:id/status", setPlayerStatus);
+router.patch("/players/:id/league-registration", updatePlayerLeagueRegistration);
 router.get("/leagues/:league/teams/pending", listPendingTeams);
 router.get("/leagues/:league/teams/:id", getTeamById);
 router.patch("/leagues/:league/teams/:id/status", setTeamStatus);
