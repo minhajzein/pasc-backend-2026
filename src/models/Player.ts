@@ -57,7 +57,14 @@ const PlayerSchema = new Schema<IPlayer>(
   { timestamps: true }
 );
 
-PlayerSchema.index({ email: 1 }, { sparse: true });
+PlayerSchema.index(
+  { email: 1 },
+  { unique: true, sparse: true, partialFilterExpression: { email: { $exists: true, $ne: "" } } }
+);
+PlayerSchema.index(
+  { whatsApp: 1 },
+  { unique: true, sparse: true, partialFilterExpression: { whatsApp: { $exists: true, $ne: "" } } }
+);
 
 export const Player: Model<IPlayer> =
   mongoose.models.Player ?? mongoose.model<IPlayer>("Player", PlayerSchema);

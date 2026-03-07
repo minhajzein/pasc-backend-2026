@@ -211,6 +211,7 @@ function validateTeamPayload(body: Record<string, unknown>, league: string): str
     franchiseOwnerId,
     franchiseOwnerName,
     franchiseOwnerEmail,
+    franchiseOwnerWhatsApp,
     franchiseOwnerPhoto,
     franchiseOwnerPosition,
     players,
@@ -235,10 +236,12 @@ function validateTeamPayload(body: Record<string, unknown>, league: string): str
     franchiseOwnerEmail &&
     franchiseOwnerPhoto &&
     franchiseOwnerPosition &&
-    isValidEmail(franchiseOwnerEmail);
+    isValidEmail(franchiseOwnerEmail) &&
+    typeof franchiseOwnerWhatsApp === "string" &&
+    franchiseOwnerWhatsApp.trim().length > 0;
 
   if (!hasExistingOwner && !hasNewOwner) {
-    return "Select an existing franchise owner or enter full details (name, email, photo, position).";
+    return "Select an existing franchise owner or enter full details (name, email, WhatsApp, photo, position).";
   }
 
   for (const p of players as { name?: unknown; photo?: unknown; position?: unknown }[]) {
@@ -591,7 +594,7 @@ export async function verifyAndRegister(req: Request, res: Response): Promise<vo
   const eligible = dob ? isOver16(dob) : false;
 
   try {
-    const ownerEmail = payload.franchiseOwnerEmail ?? payload.ownerEmail ?? "";
+    const ownerEmail = (payload.franchiseOwnerEmail ?? payload.ownerEmail ?? "").trim().toLowerCase();
     let ownerPlayer: { _id: mongoose.Types.ObjectId } | null;
 
     if (payload.franchiseOwnerId) {
@@ -621,6 +624,27 @@ export async function verifyAndRegister(req: Request, res: Response): Promise<vo
     } else {
       ownerPlayer = await Player.findOne({ email: ownerEmail }).lean();
       if (!ownerPlayer) {
+        if (!ownerEmail) {
+          res.status(400).json({
+            error: "Franchise owner email is required. Select an existing player or enter a valid email.",
+          });
+          return;
+        }
+        const name = (payload.franchiseOwnerName ?? "").trim();
+        const photo = payload.franchiseOwnerPhoto ?? "";
+        const whatsApp = (payload.franchiseOwnerWhatsApp ?? "").trim();
+        if (!name) {
+          res.status(400).json({ error: "Franchise owner name is required." });
+          return;
+        }
+        if (!photo) {
+          res.status(400).json({ error: "Franchise owner photo is required." });
+          return;
+        }
+        if (!whatsApp) {
+          res.status(400).json({ error: "Franchise owner WhatsApp number is required." });
+          return;
+        }
         const created = await Player.create({
           fullName: payload.franchiseOwnerName ?? "",
           email: ownerEmail,
@@ -734,6 +758,58 @@ export async function verifyAndRegister(req: Request, res: Response): Promise<vo
           continue;
         }
       }
+      const pEmail = (p as { email?: string }).email && String((p as { email?: string }).email).trim()
+        ? String((p as { email?: string }).email).trim().toLowerCase()
+        : "";
+      const pWhatsApp = (p as { whatsApp?: string }).whatsApp && String((p as { whatsApp?: string }).whatsApp).trim()
+        ? String((p as { whatsApp?: string }).whatsApp).trim()
+        : "";
+      let existingByContact: { _id: mongoose.Types.ObjectId; leagueRegistrations?: { league: unknown }[] } | null = null;
+      if (pEmail) existingByContact = await Player.findOne({ email: pEmail }).select("_id leagueRegistrations").lean();
+      if (!existingByContact && pWhatsApp) existingByContact = await Player.findOne({ whatsApp: pWhatsApp }).select("_id leagueRegistrations").lean();
+      if (existingByContact) {
+        const hasReg = existingByContact.leagueRegistrations?.some((r) => String(r.league) === String(leagueId));
+        if (leagueId && !hasReg) {
+          await Player.updateOne(
+            { _id: existingByContact._id },
+            {
+              $push: {
+                leagueRegistrations: {
+                  league: leagueId,
+                  paymentStatus: (p as { paymentScreenshot?: string }).paymentScreenshot ? "paid" : "pending",
+                  paymentScreenshot: (p as { paymentScreenshot?: string }).paymentScreenshot ?? "",
+                  eligible: (() => {
+                    const dob = (p as { dateOfBirth?: string }).dateOfBirth;
+                    return dob ? isOver16(new Date(dob)) : false;
+                  })(),
+                  position: p.position ?? "",
+                },
+              },
+            }
+          );
+        }
+        teamPlayers.push({
+          player: existingByContact._id,
+          position: p.position ?? getDefaultPositionForLeague(league),
+        });
+        continue;
+      }
+      if (!pEmail && !pWhatsApp) {
+        res.status(400).json({
+          error: "Each player must have an email or WhatsApp number. Cannot create a player without contact details.",
+        });
+        return;
+      }
+      const rosterName = (p.name ?? "").trim();
+      const rosterPhoto = p.photo ?? "";
+      if (!rosterName) {
+        res.status(400).json({ error: "Each player must have a name." });
+        return;
+      }
+      if (!rosterPhoto) {
+        res.status(400).json({ error: "Each player must have a photo." });
+        return;
+      }
       const created = await Player.create({
         fullName: p.name ?? "",
         email: (p as { email?: string }).email && String((p as { email?: string }).email).trim() ? String((p as { email?: string }).email).trim().toLowerCase() : "",
@@ -797,6 +873,12 @@ export async function verifyAndRegister(req: Request, res: Response): Promise<vo
             league === "pbl"
               ? "This email is already registered as an owner in this league."
               : "This email is already registered as a franchise owner in this league.",
+        });
+        return;
+      }
+      if (e.keyPattern?.email || e.keyPattern?.whatsApp) {
+        res.status(409).json({
+          error: "A player with this email or WhatsApp number is already registered.",
         });
         return;
       }

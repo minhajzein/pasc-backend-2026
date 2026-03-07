@@ -17,8 +17,9 @@ export async function listPlayers(req: Request, res: Response): Promise<void> {
     MAX_LIMIT
   );
 
-  const filter: mongoose.FilterQuery<{ fullName: string; email: string }> = {
+  const filter: mongoose.FilterQuery<{ fullName: string; email: string; whatsApp?: string }> = {
     email: { $exists: true, $ne: "" },
+    whatsApp: { $exists: true, $ne: "" },
   };
   if (q.length > 0) {
     const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -39,7 +40,7 @@ export async function listPlayers(req: Request, res: Response): Promise<void> {
   }
 
   const players = await Player.find(filter)
-    .select(includeLeagueStatus ? "_id fullName email photo leagueRegistrations" : "_id fullName email photo")
+    .select(includeLeagueStatus ? "_id fullName email photo whatsApp leagueRegistrations" : "_id fullName email photo whatsApp")
     .sort({ fullName: 1 })
     .limit(limit)
     .lean();
@@ -50,6 +51,7 @@ export async function listPlayers(req: Request, res: Response): Promise<void> {
       fullName: p.fullName,
       email: p.email,
       photo: p.photo ?? "",
+      whatsApp: (p as { whatsApp?: string }).whatsApp?.trim() ?? "",
     };
     if (includeLeagueStatus && leagueId && "leagueRegistrations" in p && Array.isArray(p.leagueRegistrations)) {
       const reg = (p.leagueRegistrations as { league: unknown; paymentStatus?: string; position?: string }[]).find(
