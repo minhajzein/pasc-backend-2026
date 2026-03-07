@@ -136,6 +136,11 @@ function isValidEmail(email: unknown): email is string {
   return typeof email === "string" && EMAIL_REGEX.test(email.trim());
 }
 
+/** Escape special regex characters for use in RegExp */
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function generateOtp(): string {
   return String(Math.floor(100000 + Math.random() * 900000));
 }
@@ -374,7 +379,8 @@ export async function sendOtp(req: Request, res: Response): Promise<void> {
     }
   }
 
-  // Uniqueness checks before sending OTP: one team per owner per league, one team name per league
+  // Uniqueness checks before sending OTP: one team per owner per league, one team name per league.
+  // Team name is unique only within the same league; the same name is allowed in different leagues.
   const existingPlayer = await Player.findOne({ email: ownerEmail }).lean();
   if (existingPlayer) {
     const existingTeam = await Team.findOne({
@@ -392,7 +398,10 @@ export async function sendOtp(req: Request, res: Response): Promise<void> {
     }
   }
 
-  const existingByTeamName = await Team.findOne({ league, teamName }).lean();
+  const existingByTeamName = await Team.findOne({
+    league, // only within this league; same name in another league is allowed
+    teamName: new RegExp(`^${escapeRegex(teamName)}$`, "i"),
+  }).lean();
   if (existingByTeamName) {
     res.status(409).json({
       error: "A team with this name is already registered in this league.",
@@ -436,7 +445,10 @@ export async function sendOtp(req: Request, res: Response): Promise<void> {
       return;
     }
   }
-  const recheckTeamName = await Team.findOne({ league, teamName }).lean();
+  const recheckTeamName = await Team.findOne({
+    league, // only within this league
+    teamName: new RegExp(`^${escapeRegex(teamName)}$`, "i"),
+  }).lean();
   if (recheckTeamName) {
     await PendingTeam.deleteOne({ token }).catch(() => {});
     res.status(409).json({
@@ -499,6 +511,65 @@ export async function verifyAndRegister(req: Request, res: Response): Promise<vo
   }
 
   const { payload } = pending;
+
+  // Use the league stored with this registration (must match URL; only check uniqueness within this league)
+  const registrationLeague = pending.league as string;
+
+  // Validate uniqueness before creating anything (same rules as before OTP; handles race or stale pending).
+  // Team name is unique only within the same league; the same name is allowed in different leagues.
+  const payloadTeamName = typeof payload.teamName === "string" ? payload.teamName.trim() : "";
+  if (payloadTeamName) {
+    const existingName = await Team.findOne({
+      league: registrationLeague,
+      teamName: new RegExp(`^${escapeRegex(payloadTeamName)}$`, "i"),
+    }).lean();
+    if (existingName) {
+      await PendingTeam.deleteOne({ token: pendingToken }).catch(() => {});
+      res.status(409).json({
+        error: "A team with this name is already registered in this league.",
+      });
+      return;
+    }
+  }
+  const ownerEmailForCheck = (payload.franchiseOwnerEmail ?? payload.ownerEmail ?? "")?.trim().toLowerCase();
+  if (ownerEmailForCheck) {
+    const existingOwnerPlayer = await Player.findOne({ email: ownerEmailForCheck }).lean();
+    if (existingOwnerPlayer) {
+      const existingOwnerTeam = await Team.findOne({
+        league: registrationLeague,
+        franchiseOwner: existingOwnerPlayer._id,
+      }).lean();
+      if (existingOwnerTeam) {
+        await PendingTeam.deleteOne({ token: pendingToken }).catch(() => {});
+        res.status(409).json({
+          error:
+            league === "pbl"
+              ? "This email is already registered as an owner in this league."
+              : "This email is already registered as a franchise owner in this league.",
+        });
+        return;
+      }
+    }
+  }
+  if (payload.franchiseOwnerId) {
+    const ownerPlayer = await Player.findById(payload.franchiseOwnerId).lean();
+    if (ownerPlayer) {
+      const existingOwnerTeam = await Team.findOne({
+        league: registrationLeague,
+        franchiseOwner: ownerPlayer._id,
+      }).lean();
+      if (existingOwnerTeam) {
+        await PendingTeam.deleteOne({ token: pendingToken }).catch(() => {});
+        res.status(409).json({
+          error:
+            league === "pbl"
+              ? "This email is already registered as an owner in this league."
+              : "This email is already registered as a franchise owner in this league.",
+        });
+        return;
+      }
+    }
+  }
 
   const leagueDoc = await League.findOne({ slug: league }).lean();
   const leagueId = leagueDoc?._id;
