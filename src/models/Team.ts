@@ -59,7 +59,7 @@ const TeamSchema = new Schema<ITeam>(
   { timestamps: true }
 );
 
-TeamSchema.index({ league: 1, teamName: 1 }, { unique: true });
+TeamSchema.index({ league: 1, teamName: 1 }, { unique: true }); // team name unique per league; same name allowed in different leagues
 /** One franchise owner per league; a player can own teams in multiple leagues. */
 TeamSchema.index({ league: 1, franchiseOwner: 1 }, { unique: true });
 
