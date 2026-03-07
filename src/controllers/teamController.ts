@@ -141,6 +141,16 @@ function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+/** Check if a team with this name (trimmed, case-insensitive) already exists in this league */
+async function teamNameExistsInLeague(league: string, name: string): Promise<boolean> {
+  const normalized = (name || "").trim().toLowerCase();
+  if (!normalized) return false;
+  const teams = await Team.find({ league }).select("teamName").lean();
+  return teams.some(
+    (t) => (typeof t.teamName === "string" ? t.teamName.trim().toLowerCase() : "") === normalized
+  );
+}
+
 function generateOtp(): string {
   return String(Math.floor(100000 + Math.random() * 900000));
 }
@@ -397,11 +407,7 @@ export async function sendOtp(req: Request, res: Response): Promise<void> {
     }
   }
 
-  const existingByTeamName = await Team.findOne({
-    league,
-    teamName: new RegExp(`^${escapeRegex(teamName)}$`, "i"),
-  }).lean();
-  if (existingByTeamName) {
+  if (await teamNameExistsInLeague(league, teamName)) {
     res.status(409).json({
       error: "A team with this name is already registered in this league.",
     });
@@ -444,11 +450,7 @@ export async function sendOtp(req: Request, res: Response): Promise<void> {
       return;
     }
   }
-  const recheckTeamName = await Team.findOne({
-    league,
-    teamName: new RegExp(`^${escapeRegex(teamName)}$`, "i"),
-  }).lean();
-  if (recheckTeamName) {
+  if (await teamNameExistsInLeague(league, teamName)) {
     await PendingTeam.deleteOne({ token }).catch(() => {});
     res.status(409).json({
       error: "A team with this name is already registered in this league.",
@@ -517,18 +519,12 @@ export async function verifyAndRegister(req: Request, res: Response): Promise<vo
   // Validate uniqueness before creating anything (same rules as before OTP; handles race or stale pending).
   // Team name is unique only within the same league; the same name is allowed in different leagues.
   const payloadTeamName = typeof payload.teamName === "string" ? payload.teamName.trim() : "";
-  if (payloadTeamName) {
-    const existingName = await Team.findOne({
-      league: registrationLeague,
-      teamName: new RegExp(`^${escapeRegex(payloadTeamName)}$`, "i"),
-    }).lean();
-    if (existingName) {
-      await PendingTeam.deleteOne({ token: pendingToken }).catch(() => {});
-      res.status(409).json({
-        error: "A team with this name is already registered in this league.",
-      });
-      return;
-    }
+  if (payloadTeamName && (await teamNameExistsInLeague(registrationLeague, payloadTeamName))) {
+    await PendingTeam.deleteOne({ token: pendingToken }).catch(() => {});
+    res.status(409).json({
+      error: "A team with this name is already registered in this league.",
+    });
+    return;
   }
   const ownerEmailForCheck = (payload.franchiseOwnerEmail ?? payload.ownerEmail ?? "")?.trim().toLowerCase();
   if (ownerEmailForCheck) {
