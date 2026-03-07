@@ -241,7 +241,7 @@ function validateTeamPayload(body: Record<string, unknown>, league: string): str
     franchiseOwnerWhatsApp.trim().length > 0;
 
   if (!hasExistingOwner && !hasNewOwner) {
-    return "Select an existing franchise owner or enter full details (name, email, WhatsApp, photo, position).";
+    return "Franchise owner is the team's player and must have email and WhatsApp. Select an existing owner or enter full details (name, email, WhatsApp, photo, position).";
   }
 
   for (const p of players as { name?: unknown; photo?: unknown; position?: unknown }[]) {
@@ -342,6 +342,11 @@ export async function sendOtp(req: Request, res: Response): Promise<void> {
       const existingOwner = await Player.findById(ownerId).lean();
       if (!existingOwner || !existingOwner.email) {
         res.status(400).json({ error: "Selected franchise owner not found or has no email." });
+        return;
+      }
+      const ownerWhatsApp = existingOwner.whatsApp && String(existingOwner.whatsApp).trim();
+      if (!ownerWhatsApp) {
+        res.status(400).json({ error: "Franchise owner must have a WhatsApp number. The selected player has no WhatsApp." });
         return;
       }
       ownerEmail = String(existingOwner.email).trim().toLowerCase();
@@ -641,6 +646,16 @@ export async function verifyAndRegister(req: Request, res: Response): Promise<vo
           res.status(400).json({ error: "Franchise owner photo is required." });
           return;
         }
+        const aadhaarFront = (payload.franchiseOwnerAadhaarFront ?? "").trim();
+        const aadhaarBack = (payload.franchiseOwnerAadhaarBack ?? "").trim();
+        if (!aadhaarFront) {
+          res.status(400).json({ error: "Franchise owner Aadhaar front image is required." });
+          return;
+        }
+        if (!aadhaarBack) {
+          res.status(400).json({ error: "Franchise owner Aadhaar back image is required." });
+          return;
+        }
         if (!whatsApp) {
           res.status(400).json({ error: "Franchise owner WhatsApp number is required." });
           return;
@@ -691,9 +706,9 @@ export async function verifyAndRegister(req: Request, res: Response): Promise<vo
     const teamPlayers: { player: typeof ownerId; position: string }[] = [];
     for (let i = 0; i < payload.players.length; i++) {
       const p = payload.players[i];
-      const isOwner = Boolean(
-        payload.ownerEmail && payload.ownerPlayerIndex === i
-      );
+      const isOwnerPbl = Boolean(payload.ownerEmail && payload.ownerPlayerIndex === i);
+      const isOwnerNonPbl = league !== "pbl" && i === 0;
+      const isOwner = isOwnerPbl || isOwnerNonPbl;
       if (isOwner) {
         teamPlayers.push({ player: ownerId, position: p.position ?? getDefaultPositionForLeague(league) });
         continue;
@@ -808,6 +823,16 @@ export async function verifyAndRegister(req: Request, res: Response): Promise<vo
       }
       if (!rosterPhoto) {
         res.status(400).json({ error: "Each player must have a photo." });
+        return;
+      }
+      const rosterAadhaarFront = ((p as { aadhaarFront?: string }).aadhaarFront ?? "").trim();
+      const rosterAadhaarBack = ((p as { aadhaarBack?: string }).aadhaarBack ?? "").trim();
+      if (!rosterAadhaarFront) {
+        res.status(400).json({ error: "Each player must have an Aadhaar front image." });
+        return;
+      }
+      if (!rosterAadhaarBack) {
+        res.status(400).json({ error: "Each player must have an Aadhaar back image." });
         return;
       }
       const created = await Player.create({
