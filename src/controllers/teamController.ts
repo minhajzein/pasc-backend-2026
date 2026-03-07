@@ -536,8 +536,14 @@ export async function verifyAndRegister(req: Request, res: Response): Promise<vo
 
   const { payload } = pending;
 
-  // Use the league stored with this registration (must match URL; only check uniqueness within this league)
+  // Use the league stored with this registration only — add only this league to leagueRegistrations.
   const registrationLeague = pending.league as string;
+  const leagueDoc = await League.findOne({ slug: registrationLeague }).lean();
+  const leagueId = leagueDoc?._id;
+  if (!leagueId) {
+    res.status(400).json({ error: "League not found. Please start registration again." });
+    return;
+  }
 
   // Validate uniqueness before creating anything (same rules as before OTP; handles race or stale pending).
   // Team name is unique only within the same league; the same name is allowed in different leagues.
@@ -588,9 +594,6 @@ export async function verifyAndRegister(req: Request, res: Response): Promise<vo
       }
     }
   }
-
-  const leagueDoc = await League.findOne({ slug: league }).lean();
-  const leagueId = leagueDoc?._id;
 
   const dobRaw = payload.franchiseOwnerDateOfBirth;
   const dob = dobRaw ? new Date(dobRaw) : null;
