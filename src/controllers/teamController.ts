@@ -379,8 +379,7 @@ export async function sendOtp(req: Request, res: Response): Promise<void> {
     }
   }
 
-  // Uniqueness checks before sending OTP: one team per owner per league, one team name per league.
-  // Team name is unique only within the same league; the same name is allowed in different leagues.
+  // --- Uniqueness checks FIRST: do not send OTP if team name or franchise owner already exists in this league ---
   const existingPlayer = await Player.findOne({ email: ownerEmail }).lean();
   if (existingPlayer) {
     const existingTeam = await Team.findOne({
@@ -399,7 +398,7 @@ export async function sendOtp(req: Request, res: Response): Promise<void> {
   }
 
   const existingByTeamName = await Team.findOne({
-    league, // only within this league; same name in another league is allowed
+    league,
     teamName: new RegExp(`^${escapeRegex(teamName)}$`, "i"),
   }).lean();
   if (existingByTeamName) {
@@ -427,7 +426,7 @@ export async function sendOtp(req: Request, res: Response): Promise<void> {
     return;
   }
 
-  // Re-check uniqueness right before sending OTP (guard against race with another request)
+  // Re-check right before sending email (guard against race)
   const recheckPlayer = await Player.findOne({ email: ownerEmail }).lean();
   if (recheckPlayer) {
     const recheckOwnerTeam = await Team.findOne({
@@ -446,7 +445,7 @@ export async function sendOtp(req: Request, res: Response): Promise<void> {
     }
   }
   const recheckTeamName = await Team.findOne({
-    league, // only within this league
+    league,
     teamName: new RegExp(`^${escapeRegex(teamName)}$`, "i"),
   }).lean();
   if (recheckTeamName) {
