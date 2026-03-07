@@ -24,7 +24,7 @@ export interface ITeam extends Document {
   registrationPaymentStatus: "pending" | "paid" | "failed";
   registrationPaymentScreenshot: string; // base64
   /** pending until admin approves */
-  status: "pending" | "verified";
+  status: "pending" | "verified" | "rejected";
   declarationAccepted: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -53,7 +53,7 @@ const TeamSchema = new Schema<ITeam>(
     sponsorDetails: { type: SponsorDetailsSchema, default: () => ({ name: "", logo: "" }) },
     registrationPaymentStatus: { type: String, enum: ["pending", "paid", "failed"], default: "pending" },
     registrationPaymentScreenshot: { type: String, default: "" },
-    status: { type: String, enum: ["pending", "verified"], default: "pending" },
+    status: { type: String, enum: ["pending", "verified", "rejected"], default: "pending" },
     declarationAccepted: { type: Boolean, required: true },
   },
   { timestamps: true }

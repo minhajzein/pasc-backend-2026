@@ -17,7 +17,7 @@ export interface IPlayer extends Document {
   dateOfBirth?: Date;
   leagueRegistrations: ILeagueRegistration[];
   /** pending until admin approves */
-  status: "pending" | "verified";
+  status: "pending" | "verified" | "rejected";
   createdAt: Date;
   updatedAt: Date;
 }
@@ -49,7 +49,7 @@ const PlayerSchema = new Schema<IPlayer>(
       type: [LeagueRegistrationSchema],
       default: [],
     },
-    status: { type: String, enum: ["pending", "verified"], default: "pending" },
+    status: { type: String, enum: ["pending", "verified", "rejected"], default: "pending" },
   },
   { timestamps: true }
 );

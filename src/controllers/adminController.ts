@@ -47,6 +47,24 @@ export async function listPendingPlayers(req: Request, res: Response): Promise<v
   res.json(players);
 }
 
+/** GET /api/admin/players/:id - get full player details (admin only) */
+export async function getPlayerById(req: Request, res: Response): Promise<void> {
+  const rawId = req.params.id;
+  const id = Array.isArray(rawId) ? rawId[0] : rawId;
+  if (!id || !mongoose.Types.ObjectId.isValid(id)) {
+    res.status(400).json({ error: "Invalid player id" });
+    return;
+  }
+  const player = await Player.findById(id)
+    .populate("leagueRegistrations.league", "name slug")
+    .lean();
+  if (!player) {
+    res.status(404).json({ error: "Player not found" });
+    return;
+  }
+  res.json(player);
+}
+
 /** GET /api/admin/leagues/:league/teams/pending - list teams with status pending */
 export async function listPendingTeams(req: Request, res: Response): Promise<void> {
   const league = getLeagueParam(req);
@@ -62,14 +80,38 @@ export async function listPendingTeams(req: Request, res: Response): Promise<voi
   res.json(teams);
 }
 
-/** PATCH /api/admin/players/:id/status - set player status to verified (admin only) */
+/** GET /api/admin/leagues/:league/teams/:id - get full team details (admin only) */
+export async function getTeamById(req: Request, res: Response): Promise<void> {
+  const league = getLeagueParam(req);
+  if (!league) {
+    res.status(400).json({ error: "Invalid league" });
+    return;
+  }
+  const rawId = req.params.id;
+  const id = Array.isArray(rawId) ? rawId[0] : rawId;
+  if (!id || !mongoose.Types.ObjectId.isValid(id)) {
+    res.status(400).json({ error: "Invalid team id" });
+    return;
+  }
+  const team = await Team.findOne({ _id: id, league })
+    .populate("franchiseOwner")
+    .populate("players.player")
+    .lean();
+  if (!team) {
+    res.status(404).json({ error: "Team not found" });
+    return;
+  }
+  res.json(team);
+}
+
+/** PATCH /api/admin/players/:id/status - set player status to verified or rejected (admin only) */
 export async function setPlayerStatus(req: Request, res: Response): Promise<void> {
   const rawId = req.params.id;
   const id = Array.isArray(rawId) ? rawId[0] : rawId;
   const status = req.body?.status;
 
-  if (!id || status !== "verified") {
-    res.status(400).json({ error: "Player id and status 'verified' required" });
+  if (!id || (status !== "verified" && status !== "rejected")) {
+    res.status(400).json({ error: "Player id and status 'verified' or 'rejected' required" });
     return;
   }
 
@@ -80,7 +122,7 @@ export async function setPlayerStatus(req: Request, res: Response): Promise<void
 
   const player = await Player.findByIdAndUpdate(
     id,
-    { $set: { status: "verified" } },
+    { $set: { status } },
     { new: true }
   )
     .select("_id fullName email status")
@@ -94,7 +136,7 @@ export async function setPlayerStatus(req: Request, res: Response): Promise<void
   res.json(player);
 }
 
-/** PATCH /api/admin/leagues/:league/teams/:id/status - set team status to verified (admin only) */
+/** PATCH /api/admin/leagues/:league/teams/:id/status - set team status to verified or rejected (admin only) */
 export async function setTeamStatus(req: Request, res: Response): Promise<void> {
   const league = getLeagueParam(req);
   if (!league) {
@@ -106,14 +148,14 @@ export async function setTeamStatus(req: Request, res: Response): Promise<void> 
   const id = Array.isArray(rawId) ? rawId[0] : rawId;
   const status = req.body?.status;
 
-  if (!id || status !== "verified") {
-    res.status(400).json({ error: "Team id and status 'verified' required" });
+  if (!id || (status !== "verified" && status !== "rejected")) {
+    res.status(400).json({ error: "Team id and status 'verified' or 'rejected' required" });
     return;
   }
 
   const team = await Team.findOneAndUpdate(
     { _id: id, league },
-    { $set: { status: "verified" } },
+    { $set: { status } },
     { new: true }
   )
     .select("_id league teamName status")
