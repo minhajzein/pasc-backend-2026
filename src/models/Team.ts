@@ -60,6 +60,7 @@ const TeamSchema = new Schema<ITeam>(
 );
 
 TeamSchema.index({ league: 1, teamName: 1 }, { unique: true });
+/** One franchise owner per league; a player can own teams in multiple leagues. */
 TeamSchema.index({ league: 1, franchiseOwner: 1 }, { unique: true });
 
 export const Team: Model<ITeam> =
