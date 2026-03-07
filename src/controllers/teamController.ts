@@ -23,7 +23,7 @@ export async function listTeams(req: Request, res: Response): Promise<void> {
     return;
   }
   try {
-    const teams = await Team.find({ league })
+    const teams = await Team.find({ league, status: "verified" })
       .select("teamName teamLogo franchiseOwner createdAt _id")
       .populate("franchiseOwner", "fullName photo")
       .sort({ createdAt: -1 })

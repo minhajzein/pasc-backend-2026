@@ -16,6 +16,7 @@ export async function listLeagues(req: Request, res: Response): Promise<void> {
   try {
     const leagues = await League.find().sort({ slug: 1 }).lean();
     const teamCounts = await Team.aggregate<{ _id: string; count: number }>([
+      { $match: { status: "verified" } },
       { $group: { _id: "$league", count: { $sum: 1 } } },
     ]);
     const countByLeague: Record<string, number> = {};
@@ -46,7 +47,7 @@ export async function getLeagueBySlug(req: Request, res: Response): Promise<void
       res.status(404).json({ error: "League not found" });
       return;
     }
-    const teams = await Team.find({ league: slug })
+    const teams = await Team.find({ league: slug, status: "verified" })
       .populate("franchiseOwner", "fullName email whatsApp photo")
       .populate("players.player", "fullName photo whatsApp")
       .sort({ createdAt: -1 })
