@@ -1,7 +1,7 @@
 import type { Request, Response } from "express";
 import mongoose from "mongoose";
 import { randomBytes } from "crypto";
-import { Team, PLAYER_POSITIONS, type PlayerPosition } from "../models/Team";
+import { Team, getAllowedPositionsForLeague, getDefaultPositionForLeague } from "../models/Team";
 import { Player, isOver16 } from "../models/Player";
 import { League } from "../models/League";
 import { PendingTeam } from "../models/PendingTeam";
@@ -246,8 +246,9 @@ function validateTeamPayload(body: Record<string, unknown>, league: string): str
       return "Each player must have name and photo";
     }
     const pos = p.position;
-    if (!pos || typeof pos !== "string" || !PLAYER_POSITIONS.includes(pos as PlayerPosition)) {
-      return "Each player must have a valid position (goalkeeper, forward, or defender)";
+    const allowed = getAllowedPositionsForLeague(league);
+    if (!pos || typeof pos !== "string" || !allowed.includes(pos.trim())) {
+      return "Each player must have a valid position for this league.";
     }
   }
 
@@ -314,12 +315,12 @@ export async function sendOtp(req: Request, res: Response): Promise<void> {
       franchiseOwnerEmail: ownerEmail,
       franchiseOwnerWhatsApp: "",
       franchiseOwnerPhoto: String(ownerSlot?.photo ?? ""),
-      franchiseOwnerPosition: "forward",
-      players: playersBody.map((p) => ({
-        playerId: p.playerId && String(p.playerId).trim() ? String(p.playerId).trim() : undefined,
-        name: p.name ? String(p.name).trim() : undefined,
-        photo: p.photo ? String(p.photo) : undefined,
-        position: "forward",
+        franchiseOwnerPosition: "forward",
+        players: playersBody.map((p) => ({
+          playerId: p.playerId && String(p.playerId).trim() ? String(p.playerId).trim() : undefined,
+          name: p.name ? String(p.name).trim() : undefined,
+          photo: p.photo ? String(p.photo) : undefined,
+          position: getDefaultPositionForLeague(league),
         email: p.email && isValidEmail(p.email) ? String(p.email).trim().toLowerCase() : undefined,
         whatsApp: p.whatsApp != null ? String(p.whatsApp).trim() : undefined,
         aadhaarFront: p.aadhaarFront != null ? String(p.aadhaarFront) : undefined,
@@ -350,14 +351,18 @@ export async function sendOtp(req: Request, res: Response): Promise<void> {
         franchiseOwnerEmail: ownerEmail,
         franchiseOwnerWhatsApp: existingOwner.whatsApp ?? "",
         franchiseOwnerPhoto: existingOwner.photo,
-        franchiseOwnerPosition: "forward",
+        franchiseOwnerPosition: getDefaultPositionForLeague(league),
         franchiseOwnerPaymentScreenshot: req.body.franchiseOwnerPaymentScreenshot != null ? String(req.body.franchiseOwnerPaymentScreenshot) : undefined,
         players: (req.body.players as { name: string; photo: string; position: string }[]).map(
-          (p) => ({
-            name: String(p.name).trim(),
-            photo: String(p.photo),
-            position: PLAYER_POSITIONS.includes(p.position as PlayerPosition) ? p.position : "forward",
-          })
+          (p) => {
+            const allowed = getAllowedPositionsForLeague(league);
+            const defaultPos = getDefaultPositionForLeague(league);
+            return {
+              name: String(p.name).trim(),
+              photo: String(p.photo),
+              position: allowed.includes(p.position?.trim()) ? p.position.trim() : defaultPos,
+            };
+          }
         ),
         sponsorDetails: normalizeSponsorDetails(req.body.sponsorDetails),
         teamRegistrationPaymentScreenshot: req.body.teamRegistrationPaymentScreenshot != null ? String(req.body.teamRegistrationPaymentScreenshot) : undefined,
@@ -382,11 +387,15 @@ export async function sendOtp(req: Request, res: Response): Promise<void> {
         franchiseOwnerDateOfBirth: req.body.franchiseOwnerDateOfBirth != null ? String(req.body.franchiseOwnerDateOfBirth) : undefined,
         franchiseOwnerPaymentScreenshot: req.body.franchiseOwnerPaymentScreenshot != null ? String(req.body.franchiseOwnerPaymentScreenshot) : undefined,
         players: (req.body.players as { name: string; photo: string; position: string }[]).map(
-          (p) => ({
-            name: String(p.name).trim(),
-            photo: String(p.photo),
-            position: PLAYER_POSITIONS.includes(p.position as PlayerPosition) ? p.position : "forward",
-          })
+          (p) => {
+            const allowed = getAllowedPositionsForLeague(league);
+            const defaultPos = getDefaultPositionForLeague(league);
+            return {
+              name: String(p.name).trim(),
+              photo: String(p.photo),
+              position: allowed.includes(p.position?.trim()) ? p.position.trim() : defaultPos,
+            };
+          }
         ),
         sponsorDetails: normalizeSponsorDetails(req.body.sponsorDetails),
         teamRegistrationPaymentScreenshot: req.body.teamRegistrationPaymentScreenshot != null ? String(req.body.teamRegistrationPaymentScreenshot) : undefined,
@@ -662,7 +671,7 @@ export async function verifyAndRegister(req: Request, res: Response): Promise<vo
         payload.ownerEmail && payload.ownerPlayerIndex === i
       );
       if (isOwner) {
-        teamPlayers.push({ player: ownerId, position: p.position ?? "forward" });
+        teamPlayers.push({ player: ownerId, position: p.position ?? getDefaultPositionForLeague(league) });
         continue;
       }
       // PBL: use existing player by playerId if set
@@ -690,7 +699,7 @@ export async function verifyAndRegister(req: Request, res: Response): Promise<vo
           }
           teamPlayers.push({
             player: existing._id,
-            position: p.position ?? "forward",
+            position: p.position ?? getDefaultPositionForLeague(league),
           });
           continue;
         }
@@ -720,7 +729,7 @@ export async function verifyAndRegister(req: Request, res: Response): Promise<vo
           }
           teamPlayers.push({
             player: existing._id,
-            position: p.position ?? "forward",
+            position: p.position ?? getDefaultPositionForLeague(league),
           });
           continue;
         }
@@ -751,7 +760,7 @@ export async function verifyAndRegister(req: Request, res: Response): Promise<vo
       });
       teamPlayers.push({
         player: created._id,
-        position: p.position ?? "forward",
+        position: p.position ?? getDefaultPositionForLeague(league),
       });
     }
 

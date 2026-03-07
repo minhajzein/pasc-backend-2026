@@ -3,6 +3,28 @@ import mongoose, { Schema, type Document, type Model } from "mongoose";
 export const PLAYER_POSITIONS = ["goalkeeper", "forward", "defender"] as const;
 export type PlayerPosition = (typeof PLAYER_POSITIONS)[number];
 
+/** Allowed positions per league (PPL, PCL, PVL); PBL uses a single placeholder. */
+export const LEAGUE_POSITIONS: Record<string, readonly string[]> = {
+  ppl: ["goalkeeper", "defender", "midfielder", "forward", "winger"],
+  pcl: ["batter", "bowler", "allRounder", "wicketKeeper"],
+  pvl: ["setter", "outsideHitter", "oppositeHitter", "middleBlocker", "libero", "defensiveSpecialist"],
+  pbl: ["forward"],
+};
+
+export function getAllowedPositionsForLeague(league: string): string[] {
+  return [...(LEAGUE_POSITIONS[league] ?? LEAGUE_POSITIONS.ppl)];
+}
+
+export function getDefaultPositionForLeague(league: string): string {
+  const defaults: Record<string, string> = {
+    ppl: "forward",
+    pcl: "batter",
+    pvl: "setter",
+    pbl: "forward",
+  };
+  return defaults[league] ?? "forward";
+}
+
 export interface ITeamPlayer {
   player: mongoose.Types.ObjectId;
   position: string;
