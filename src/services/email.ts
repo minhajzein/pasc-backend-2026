@@ -37,3 +37,20 @@ export async function sendOtpEmail(to: string, otp: string): Promise<void> {
     `,
   });
 }
+
+export async function sendLoginOtpEmail(to: string, otp: string): Promise<void> {
+  const transport = getTransporter();
+  const from = env.smtp.from;
+  await transport.sendMail({
+    from: `PASFIESTA <${from}>`,
+    to,
+    subject: "Your PASFIESTA login code",
+    text: `Your login verification code is: ${otp}\n\nThis code expires in 10 minutes.\n\nIf you did not request this, please ignore this email.`,
+    html: `
+      <p>Your login verification code is:</p>
+      <p style="font-size:24px;font-weight:bold;letter-spacing:4px;">${otp}</p>
+      <p>This code expires in 10 minutes.</p>
+      <p>If you did not request this, please ignore this email.</p>
+    `,
+  });
+}

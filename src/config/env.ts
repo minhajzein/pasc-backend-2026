@@ -11,4 +11,6 @@ export const env = {
     pass: process.env.SMTP_PASS ?? "",
     from: process.env.SMTP_FROM ?? process.env.SMTP_USER ?? "pasfiesta@gmail.com",
   },
+  jwtSecret: process.env.JWT_SECRET ?? "pasc-dev-secret-change-in-production",
+  adminSecret: process.env.ADMIN_SECRET ?? "",
 } as const;

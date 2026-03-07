@@ -1,13 +1,12 @@
 import mongoose, { Schema, type Document, type Model } from "mongoose";
 
-export interface IPlayer {
-  name: string;
-  photo: string; // base64
-  position: "goalkeeper" | "forward" | "defender";
-}
-
 export const PLAYER_POSITIONS = ["goalkeeper", "forward", "defender"] as const;
 export type PlayerPosition = (typeof PLAYER_POSITIONS)[number];
+
+export interface ITeamPlayer {
+  player: mongoose.Types.ObjectId;
+  position: string;
+}
 
 export interface ISponsorDetails {
   name: string;
@@ -18,23 +17,23 @@ export interface ITeam extends Document {
   league: string;
   teamName: string;
   teamLogo: string;
-  managerName: string;
-  managerEmail: string;
-  managerWhatsApp: string;
-  managerIsPlayer: boolean;
-  managerPhoto: string;
-  players: IPlayer[];
+  franchiseOwner: mongoose.Types.ObjectId; // ref Player - franchise owner is a player
+  players: ITeamPlayer[]; // refs to Player + position in team
   sponsorDetails: ISponsorDetails;
+  /** Team registration fee payment */
+  registrationPaymentStatus: "pending" | "paid" | "failed";
+  registrationPaymentScreenshot: string; // base64
+  /** pending until admin approves */
+  status: "pending" | "verified";
   declarationAccepted: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
 
-const PlayerSchema = new Schema<IPlayer>(
+const TeamPlayerSchema = new Schema<ITeamPlayer>(
   {
-    name: { type: String, required: true },
-    photo: { type: String, required: true },
-    position: { type: String, required: true, enum: ["goalkeeper", "forward", "defender"] },
+    player: { type: Schema.Types.ObjectId, ref: "Player", required: true },
+    position: { type: String, required: true },
   },
   { _id: true }
 );
@@ -49,20 +48,19 @@ const TeamSchema = new Schema<ITeam>(
     league: { type: String, required: true, enum: ["ppl", "pcl", "pvl", "pbl"] },
     teamName: { type: String, required: true },
     teamLogo: { type: String, required: true },
-    managerName: { type: String, required: true },
-    managerEmail: { type: String, required: true },
-    managerWhatsApp: { type: String, default: "" },
-    managerIsPlayer: { type: Boolean, required: true, default: false },
-    managerPhoto: { type: String, required: true },
-    players: { type: [PlayerSchema], required: true, validate: (v: IPlayer[]) => Array.isArray(v) && v.length > 0 },
+    franchiseOwner: { type: Schema.Types.ObjectId, ref: "Player", required: true },
+    players: { type: [TeamPlayerSchema], required: true, default: [] },
     sponsorDetails: { type: SponsorDetailsSchema, default: () => ({ name: "", logo: "" }) },
+    registrationPaymentStatus: { type: String, enum: ["pending", "paid", "failed"], default: "pending" },
+    registrationPaymentScreenshot: { type: String, default: "" },
+    status: { type: String, enum: ["pending", "verified"], default: "pending" },
     declarationAccepted: { type: Boolean, required: true },
   },
   { timestamps: true }
 );
 
 TeamSchema.index({ league: 1, teamName: 1 }, { unique: true });
-TeamSchema.index({ league: 1, managerEmail: 1 }, { unique: true });
+TeamSchema.index({ league: 1, franchiseOwner: 1 }, { unique: true });
 
 export const Team: Model<ITeam> =
   mongoose.models.Team ?? mongoose.model<ITeam>("Team", TeamSchema);
