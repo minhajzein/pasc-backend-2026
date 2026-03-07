@@ -374,6 +374,7 @@ export async function sendOtp(req: Request, res: Response): Promise<void> {
     }
   }
 
+  // Uniqueness checks before sending OTP: one team per owner per league, one team name per league
   const existingPlayer = await Player.findOne({ email: ownerEmail }).lean();
   if (existingPlayer) {
     const existingTeam = await Team.findOne({
@@ -414,6 +415,33 @@ export async function sendOtp(req: Request, res: Response): Promise<void> {
   } catch (e) {
     console.error("PendingTeam create error:", e);
     res.status(500).json({ error: "Failed to create pending registration" });
+    return;
+  }
+
+  // Re-check uniqueness right before sending OTP (guard against race with another request)
+  const recheckPlayer = await Player.findOne({ email: ownerEmail }).lean();
+  if (recheckPlayer) {
+    const recheckOwnerTeam = await Team.findOne({
+      league,
+      franchiseOwner: recheckPlayer._id,
+    }).lean();
+    if (recheckOwnerTeam) {
+      await PendingTeam.deleteOne({ token }).catch(() => {});
+      res.status(409).json({
+        error:
+          league === "pbl"
+            ? "This email is already registered as an owner in this league."
+            : "This email is already registered as a franchise owner in this league.",
+      });
+      return;
+    }
+  }
+  const recheckTeamName = await Team.findOne({ league, teamName }).lean();
+  if (recheckTeamName) {
+    await PendingTeam.deleteOne({ token }).catch(() => {});
+    res.status(409).json({
+      error: "A team with this name is already registered in this league.",
+    });
     return;
   }
 
