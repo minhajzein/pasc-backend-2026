@@ -1,6 +1,7 @@
 import type { Request, Response } from "express";
 import { League } from "../models/League";
 import { Team } from "../models/Team";
+import { Player } from "../models/Player";
 
 const LEAGUE_SLUGS = ["ppl", "pcl", "pvl", "pbl"] as const;
 
@@ -54,5 +55,57 @@ export async function getLeagueBySlug(req: Request, res: Response): Promise<void
   } catch (e) {
     console.error("Get league error:", e);
     res.status(500).json({ error: "Failed to load league" });
+  }
+}
+
+const LEAGUES_WITH_PLAYERS = ["ppl", "pcl", "pvl"] as const;
+
+/** GET /api/leagues/:league/players - list players registered for this league (PPL, PCL, PVL only; no PBL) */
+export async function listLeaguePlayers(req: Request, res: Response): Promise<void> {
+  const slug = getLeagueSlug(req);
+  if (!slug) {
+    res.status(400).json({ error: "Invalid league" });
+    return;
+  }
+  if (!LEAGUES_WITH_PLAYERS.includes(slug as (typeof LEAGUES_WITH_PLAYERS)[number])) {
+    res.status(404).json({ error: "This league does not have a public players list." });
+    return;
+  }
+  try {
+    const leagueDoc = await League.findOne({ slug }).select("_id").lean();
+    if (!leagueDoc) {
+      res.status(404).json({ error: "League not found" });
+      return;
+    }
+    const limit = Math.min(500, Math.max(1, parseInt(String(req.query.limit), 10) || 100));
+    const skip = Math.max(0, parseInt(String(req.query.skip), 10) || 0);
+
+    const players = await Player.find({
+      "leagueRegistrations.league": leagueDoc._id,
+      status: { $in: ["pending", "verified"] },
+    })
+      .select("fullName photo leagueRegistrations")
+      .sort({ fullName: 1 })
+      .skip(skip)
+      .limit(limit)
+      .lean();
+
+    const leagueIdStr = String(leagueDoc._id);
+    const list = players.map((p) => {
+      const reg = (p.leagueRegistrations as { league: unknown; position?: string }[]).find(
+        (r) => String(r.league) === leagueIdStr
+      );
+      return {
+        _id: String(p._id),
+        fullName: p.fullName,
+        photo: p.photo ?? "",
+        position: reg?.position?.trim() || "",
+      };
+    });
+
+    res.json(list);
+  } catch (e) {
+    console.error("List league players error:", e);
+    res.status(500).json({ error: "Failed to load players" });
   }
 }

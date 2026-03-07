@@ -59,7 +59,15 @@ const TeamSchema = new Schema<ITeam>(
   { timestamps: true }
 );
 
-TeamSchema.index({ league: 1, teamName: 1 }, { unique: true }); // team name unique per league; same name allowed in different leagues
+TeamSchema.index(
+  { league: 1, teamName: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { status: { $in: ["pending", "verified"] } },
+    name: "league_1_teamName_1_partial",
+  }
+);
+// Old non-partial index "league_1_teamName_1" is dropped once at server startup (see config/db.ts).
 /** One franchise owner per league; a player can own teams in multiple leagues. */
 TeamSchema.index({ league: 1, franchiseOwner: 1 }, { unique: true });
 

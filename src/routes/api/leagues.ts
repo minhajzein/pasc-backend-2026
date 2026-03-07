@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import {
   listLeagues,
   getLeagueBySlug,
+  listLeaguePlayers,
 } from "../../controllers/leagueController";
 import {
   sendOtp,
@@ -15,6 +16,7 @@ import { requireAuth } from "../../middleware/auth";
 const router: IRouter = Router();
 
 router.get("/", listLeagues);
+router.get("/:league/players", listLeaguePlayers);
 router.get("/:league/teams/:id", getTeamById);
 router.patch("/:league/teams/:id", requireAuth, updateTeam);
 router.get("/:league/teams", listTeams);

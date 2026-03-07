@@ -52,10 +52,12 @@ export async function listPlayers(req: Request, res: Response): Promise<void> {
       photo: p.photo ?? "",
     };
     if (includeLeagueStatus && leagueId && "leagueRegistrations" in p && Array.isArray(p.leagueRegistrations)) {
-      const hasPaidForLeague = (p.leagueRegistrations as { league: unknown; paymentStatus?: string }[]).some(
-        (r) => String(r.league) === String(leagueId) && r.paymentStatus === "paid"
+      const reg = (p.leagueRegistrations as { league: unknown; paymentStatus?: string; position?: string }[]).find(
+        (r) => String(r.league) === String(leagueId)
       );
-      return { ...base, hasPaidForLeague };
+      const hasPaidForLeague = reg?.paymentStatus === "paid";
+      const positionForLeague = reg?.position?.trim() || undefined;
+      return { ...base, hasPaidForLeague, positionForLeague };
     }
     return base;
   });

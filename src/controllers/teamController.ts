@@ -141,11 +141,17 @@ function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-/** Check if a team with this name (trimmed, case-insensitive) already exists in this league */
+/** Check if a team with this name (trimmed, case-insensitive) already exists in this league.
+ *  Only considers pending and verified teams; rejected teams do not block reusing the name. */
 async function teamNameExistsInLeague(league: string, name: string): Promise<boolean> {
   const normalized = (name || "").trim().toLowerCase();
   if (!normalized) return false;
-  const teams = await Team.find({ league }).select("teamName").lean();
+  const teams = await Team.find({
+    league,
+    status: { $in: ["pending", "verified"] },
+  })
+    .select("teamName")
+    .lean();
   return teams.some(
     (t) => (typeof t.teamName === "string" ? t.teamName.trim().toLowerCase() : "") === normalized
   );
@@ -597,6 +603,7 @@ export async function verifyAndRegister(req: Request, res: Response): Promise<vo
                 paymentStatus,
                 paymentScreenshot,
                 eligible,
+                position: payload.franchiseOwnerPosition ?? "",
               },
             },
           }
@@ -614,7 +621,7 @@ export async function verifyAndRegister(req: Request, res: Response): Promise<vo
           aadhaarBack: payload.franchiseOwnerAadhaarBack ?? "",
           dateOfBirth: dob ?? undefined,
           leagueRegistrations: leagueId
-            ? [{ league: leagueId, paymentStatus, paymentScreenshot, eligible }]
+            ? [{ league: leagueId, paymentStatus, paymentScreenshot, eligible, position: payload.franchiseOwnerPosition ?? "" }]
             : [],
         });
         ownerPlayer = created.toObject() as typeof ownerPlayer & { _id: typeof created._id };
@@ -638,6 +645,7 @@ export async function verifyAndRegister(req: Request, res: Response): Promise<vo
                   paymentStatus,
                   paymentScreenshot,
                   eligible,
+                  position: payload.franchiseOwnerPosition ?? "",
                 },
               },
             }
@@ -674,6 +682,7 @@ export async function verifyAndRegister(req: Request, res: Response): Promise<vo
                     paymentStatus: "pending",
                     paymentScreenshot: "",
                     eligible: false,
+                    position: p.position ?? "",
                   },
                 },
               }
@@ -703,6 +712,7 @@ export async function verifyAndRegister(req: Request, res: Response): Promise<vo
                     paymentStatus: "pending",
                     paymentScreenshot: "",
                     eligible: false,
+                    position: p.position ?? "",
                   },
                 },
               }
@@ -735,6 +745,7 @@ export async function verifyAndRegister(req: Request, res: Response): Promise<vo
                 const dob = (p as { dateOfBirth?: string }).dateOfBirth;
                 return dob ? isOver16(new Date(dob)) : false;
               })(),
+              position: p.position ?? "",
             }]
           : [],
       });

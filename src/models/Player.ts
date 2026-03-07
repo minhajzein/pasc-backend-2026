@@ -5,6 +5,8 @@ export interface ILeagueRegistration {
   paymentStatus: "pending" | "paid" | "failed";
   paymentScreenshot: string; // base64
   eligible: boolean; // over 16 and verified
+  /** Playing position for this league (e.g. forward for PPL, batter for PCL) */
+  position?: string;
 }
 
 export interface IPlayer extends Document {
@@ -32,6 +34,7 @@ const LeagueRegistrationSchema = new Schema<ILeagueRegistration>(
     },
     paymentScreenshot: { type: String, default: "" },
     eligible: { type: Boolean, default: false },
+    position: { type: String, default: "" },
   },
   { _id: true }
 );
