@@ -3,7 +3,9 @@ import { requireAdmin } from "../../middleware/admin";
 import {
   adminLogin,
   listPendingPlayers,
+  listPlayers,
   listPendingTeams,
+  listTeams,
   getPlayerById,
   getTeamById,
   setPlayerStatus,
@@ -18,10 +20,12 @@ router.post("/login", adminLogin);
 router.use(requireAdmin);
 
 router.get("/players/pending", listPendingPlayers);
+router.get("/players", listPlayers);
 router.get("/players/:id", getPlayerById);
 router.patch("/players/:id/status", setPlayerStatus);
 router.patch("/players/:id/league-registration", updatePlayerLeagueRegistration);
 router.get("/leagues/:league/teams/pending", listPendingTeams);
+router.get("/leagues/:league/teams", listTeams);
 router.get("/leagues/:league/teams/:id", getTeamById);
 router.patch("/leagues/:league/teams/:id/status", setTeamStatus);
 

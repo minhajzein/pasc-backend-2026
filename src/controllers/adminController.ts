@@ -48,6 +48,20 @@ export async function listPendingPlayers(req: Request, res: Response): Promise<v
   res.json(players);
 }
 
+/** GET /api/admin/players - list all players (optional ?status=pending|verified|rejected) */
+export async function listPlayers(req: Request, res: Response): Promise<void> {
+  const status = req.query.status as string | undefined;
+  const filter: { status?: string } = {};
+  if (status === "pending" || status === "verified" || status === "rejected") {
+    filter.status = status;
+  }
+  const players = await Player.find(filter)
+    .select("_id fullName email createdAt status")
+    .sort({ createdAt: -1 })
+    .lean();
+  res.json(players);
+}
+
 /** GET /api/admin/players/:id - get full player details (admin only) */
 export async function getPlayerById(req: Request, res: Response): Promise<void> {
   const rawId = req.params.id;
@@ -74,6 +88,26 @@ export async function listPendingTeams(req: Request, res: Response): Promise<voi
     return;
   }
   const teams = await Team.find({ league, status: "pending" })
+    .select("_id league teamName franchiseOwner createdAt status")
+    .populate("franchiseOwner", "fullName email")
+    .sort({ createdAt: -1 })
+    .lean();
+  res.json(teams);
+}
+
+/** GET /api/admin/leagues/:league/teams - list all teams for league (optional ?status=pending|verified|rejected) */
+export async function listTeams(req: Request, res: Response): Promise<void> {
+  const league = getLeagueParam(req);
+  if (!league) {
+    res.status(400).json({ error: "Invalid league" });
+    return;
+  }
+  const status = req.query.status as string | undefined;
+  const filter: { league: string; status?: string } = { league };
+  if (status === "pending" || status === "verified" || status === "rejected") {
+    filter.status = status;
+  }
+  const teams = await Team.find(filter)
     .select("_id league teamName franchiseOwner createdAt status")
     .populate("franchiseOwner", "fullName email")
     .sort({ createdAt: -1 })
