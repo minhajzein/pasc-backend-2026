@@ -335,6 +335,26 @@ export async function sendOtp(req: Request, res: Response): Promise<void> {
       teamRegistrationPaymentScreenshot: req.body.teamRegistrationPaymentScreenshot != null ? String(req.body.teamRegistrationPaymentScreenshot) : undefined,
       declarationAccepted: true,
     };
+    const pblPlayers = payload.players as { playerId?: string }[];
+    if (pblPlayers.length >= 2) {
+      const id1 = pblPlayers[0].playerId?.trim();
+      const id2 = pblPlayers[1].playerId?.trim();
+      if (id1 && id2 && id1 === id2) {
+        res.status(400).json({ error: "The two players must be different. Player 1 and Player 2 cannot be the same person." });
+        return;
+      }
+      for (const p of pblPlayers) {
+        const pid = p.playerId?.trim();
+        if (!pid) continue;
+        const existingPblTeam = await Team.findOne({ league: "pbl", "players.player": pid }).lean();
+        if (existingPblTeam) {
+          res.status(400).json({
+            error: "One or more players are already on another PBL team. Each player can only be on one PBL team.",
+          });
+          return;
+        }
+      }
+    }
   } else {
     const hasExistingOwner = typeof req.body.franchiseOwnerId === "string" && req.body.franchiseOwnerId.trim().length > 0;
     if (hasExistingOwner) {
@@ -866,6 +886,24 @@ export async function verifyAndRegister(req: Request, res: Response): Promise<vo
         player: created._id,
         position: p.position ?? getDefaultPositionForLeague(league),
       });
+    }
+
+    if (league === "pbl" && teamPlayers.length === 2) {
+      const id0 = teamPlayers[0].player;
+      const id1 = teamPlayers[1].player;
+      if (id0.equals(id1)) {
+        res.status(400).json({ error: "The two players must be different. Player 1 and Player 2 cannot be the same person." });
+        return;
+      }
+      for (const { player: pid } of teamPlayers) {
+        const existingPblTeam = await Team.findOne({ league: "pbl", "players.player": pid }).lean();
+        if (existingPblTeam) {
+          res.status(400).json({
+            error: "One or more players are already on another PBL team. Each player can only be on one PBL team.",
+          });
+          return;
+        }
+      }
     }
 
     const team = await Team.create({
