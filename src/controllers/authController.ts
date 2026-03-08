@@ -7,6 +7,7 @@ import { PendingPlayerRegistration } from "../models/PendingPlayerRegistration";
 import { sendLoginOtpEmail } from "../services/email";
 import { env } from "../config/env";
 import type { AuthRequest, JwtPayload } from "../middleware/auth";
+import { normalizeWhatsAppForUniqueness, whatsAppLookupValues } from "../utils/phone";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -139,7 +140,27 @@ export async function updateMe(req: AuthRequest, res: Response): Promise<void> {
   const body = req.body as Record<string, unknown>;
   const updates: Record<string, unknown> = {};
   if (typeof body.fullName === "string" && body.fullName.trim()) updates.fullName = body.fullName.trim();
-  if (typeof body.whatsApp === "string") updates.whatsApp = body.whatsApp.trim();
+  if (typeof body.whatsApp === "string") {
+    const trimmed = body.whatsApp.trim();
+    const normalizedWhatsApp = normalizeWhatsAppForUniqueness(trimmed);
+    if (trimmed && !normalizedWhatsApp) {
+      res.status(400).json({ error: "Enter a valid WhatsApp number with country code (e.g. +91 98765 43210)." });
+      return;
+    }
+    if (normalizedWhatsApp) {
+      const lookup = whatsAppLookupValues(normalizedWhatsApp);
+      const otherWithSame = lookup.length > 0
+        ? await Player.findOne({ _id: { $ne: req.user!.id }, whatsApp: { $in: lookup } }).lean()
+        : null;
+      if (otherWithSame) {
+        res.status(409).json({ error: "This WhatsApp number is already registered for another player." });
+        return;
+      }
+      updates.whatsApp = normalizedWhatsApp;
+    } else {
+      updates.whatsApp = trimmed;
+    }
+  }
   if (typeof body.photo === "string") updates.photo = body.photo;
   if (typeof body.aadhaarFront === "string") updates.aadhaarFront = body.aadhaarFront;
   if (typeof body.aadhaarBack === "string") updates.aadhaarBack = body.aadhaarBack;
@@ -187,6 +208,21 @@ export async function sendPlayerRegisterOtp(req: AuthRequest, res: Response): Pr
     return;
   }
 
+  const rawWhatsApp = typeof body.whatsApp === "string" ? body.whatsApp.trim() : "";
+  const normalizedWhatsApp = normalizeWhatsAppForUniqueness(rawWhatsApp);
+  if (rawWhatsApp && !normalizedWhatsApp) {
+    res.status(400).json({ error: "Enter a valid WhatsApp number with country code (e.g. +91 98765 43210)." });
+    return;
+  }
+  if (normalizedWhatsApp) {
+    const lookup = whatsAppLookupValues(normalizedWhatsApp);
+    const existingByWhatsApp = await Player.findOne({ whatsApp: { $in: lookup } }).lean();
+    if (existingByWhatsApp) {
+      res.status(409).json({ error: "This WhatsApp number is already registered. Use a different number or login." });
+      return;
+    }
+  }
+
   const validLeagues = leaguePayments.filter(
     (p) => typeof p.leagueSlug === "string" && PLAYER_REG_LEAGUES.includes(p.leagueSlug as (typeof PLAYER_REG_LEAGUES)[number])
   );
@@ -206,7 +242,7 @@ export async function sendPlayerRegisterOtp(req: AuthRequest, res: Response): Pr
     payload: {
       fullName,
       email: normalized,
-      whatsApp: typeof body.whatsApp === "string" ? body.whatsApp.trim() : "",
+      whatsApp: normalizedWhatsApp || rawWhatsApp,
       photo,
       aadhaarFront: typeof body.aadhaarFront === "string" ? body.aadhaarFront : undefined,
       aadhaarBack: typeof body.aadhaarBack === "string" ? body.aadhaarBack : undefined,
@@ -255,6 +291,21 @@ export async function verifyPlayerRegister(req: AuthRequest, res: Response): Pro
   }
 
   const p = pending.payload;
+  const whatsAppStored = p.whatsApp ?? "";
+  const normalizedWhatsApp = normalizeWhatsAppForUniqueness(whatsAppStored);
+  if (whatsAppStored && !normalizedWhatsApp) {
+    res.status(400).json({ error: "Invalid WhatsApp number. Use a valid number with country code (e.g. +91 98765 43210)." });
+    return;
+  }
+  if (normalizedWhatsApp) {
+    const lookup = whatsAppLookupValues(normalizedWhatsApp);
+    const existingByWhatsApp = await Player.findOne({ whatsApp: { $in: lookup } }).lean();
+    if (existingByWhatsApp) {
+      res.status(409).json({ error: "This WhatsApp number is already registered. Use a different number or login." });
+      return;
+    }
+  }
+
   const leagueDocs = await League.find({ slug: { $in: p.leaguePayments.map((x) => x.leagueSlug) } }).lean();
   const leagueRegistrations = p.leaguePayments.map((lp) => {
     const leagueDoc = leagueDocs.find((l) => l.slug === lp.leagueSlug);
@@ -272,7 +323,7 @@ export async function verifyPlayerRegister(req: AuthRequest, res: Response): Pro
   const player = await Player.create({
     fullName: p.fullName,
     email: p.email,
-    whatsApp: p.whatsApp ?? "",
+    whatsApp: normalizedWhatsApp || whatsAppStored,
     photo: p.photo,
     aadhaarFront: p.aadhaarFront ?? "",
     aadhaarBack: p.aadhaarBack ?? "",

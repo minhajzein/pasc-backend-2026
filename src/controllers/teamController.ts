@@ -7,6 +7,7 @@ import { League } from "../models/League";
 import { PendingTeam } from "../models/PendingTeam";
 import { sendOtpEmail } from "../services/email";
 import type { AuthRequest } from "../middleware/auth";
+import { normalizeWhatsAppForUniqueness, whatsAppLookupValues } from "../utils/phone";
 
 const LEAGUES = ["ppl", "pcl", "pvl", "pbl"] as const;
 
@@ -683,10 +684,23 @@ export async function verifyAndRegister(req: Request, res: Response): Promise<vo
           res.status(400).json({ error: "Franchise owner WhatsApp number is required." });
           return;
         }
+        const normalizedOwnerWhatsApp = normalizeWhatsAppForUniqueness(whatsApp);
+        if (!normalizedOwnerWhatsApp) {
+          res.status(400).json({ error: "Enter a valid WhatsApp number with country code (e.g. +91 98765 43210)." });
+          return;
+        }
+        const ownerLookup = whatsAppLookupValues(normalizedOwnerWhatsApp);
+        if (ownerLookup.length > 0) {
+          const existingByWhatsApp = await Player.findOne({ whatsApp: { $in: ownerLookup } }).lean();
+          if (existingByWhatsApp) {
+            res.status(409).json({ error: "This WhatsApp number is already registered for another player. Use a different number or select the existing player." });
+            return;
+          }
+        }
         const created = await Player.create({
           fullName: payload.franchiseOwnerName ?? "",
           email: ownerEmail,
-          whatsApp: payload.franchiseOwnerWhatsApp ?? "",
+          whatsApp: normalizedOwnerWhatsApp,
           photo: payload.franchiseOwnerPhoto ?? "",
           aadhaarFront: payload.franchiseOwnerAadhaarFront ?? "",
           aadhaarBack: payload.franchiseOwnerAadhaarBack ?? "",
@@ -804,7 +818,12 @@ export async function verifyAndRegister(req: Request, res: Response): Promise<vo
         : "";
       let existingByContact: { _id: mongoose.Types.ObjectId; leagueRegistrations?: { league: unknown }[] } | null = null;
       if (pEmail) existingByContact = await Player.findOne({ email: pEmail }).select("_id leagueRegistrations").lean();
-      if (!existingByContact && pWhatsApp) existingByContact = await Player.findOne({ whatsApp: pWhatsApp }).select("_id leagueRegistrations").lean();
+      if (!existingByContact && pWhatsApp) {
+        const lookup = whatsAppLookupValues(pWhatsApp);
+        existingByContact = lookup.length > 0
+          ? await Player.findOne({ whatsApp: { $in: lookup } }).select("_id leagueRegistrations").lean()
+          : null;
+      }
       if (existingByContact) {
         const hasReg = existingByContact.leagueRegistrations?.some((r) => String(r.league) === String(leagueId));
         if (leagueId && !hasReg) {
@@ -848,6 +867,20 @@ export async function verifyAndRegister(req: Request, res: Response): Promise<vo
         res.status(400).json({ error: "Each player must have a photo." });
         return;
       }
+      const rawRosterWhatsApp = (p as { whatsApp?: string }).whatsApp ?? "";
+      const normalizedRosterWhatsApp = normalizeWhatsAppForUniqueness(rawRosterWhatsApp);
+      if (rawRosterWhatsApp && !normalizedRosterWhatsApp) {
+        res.status(400).json({ error: "Enter a valid WhatsApp number with country code for each player (e.g. +91 98765 43210)." });
+        return;
+      }
+      const rosterLookup = whatsAppLookupValues(normalizedRosterWhatsApp || rawRosterWhatsApp);
+      if (rosterLookup.length > 0) {
+        const existingByWhatsApp = await Player.findOne({ whatsApp: { $in: rosterLookup } }).lean();
+        if (existingByWhatsApp) {
+          res.status(409).json({ error: "A player with this WhatsApp number is already registered. Use a different number or select the existing player." });
+          return;
+        }
+      }
       const rosterAadhaarFront = ((p as { aadhaarFront?: string }).aadhaarFront ?? "").trim();
       const rosterAadhaarBack = ((p as { aadhaarBack?: string }).aadhaarBack ?? "").trim();
       if (!rosterAadhaarFront) {
@@ -862,7 +895,7 @@ export async function verifyAndRegister(req: Request, res: Response): Promise<vo
         fullName: p.name ?? "",
         email: (p as { email?: string }).email && String((p as { email?: string }).email).trim() ? String((p as { email?: string }).email).trim().toLowerCase() : "",
         photo: p.photo ?? "",
-        whatsApp: (p as { whatsApp?: string }).whatsApp ?? "",
+        whatsApp: normalizedRosterWhatsApp || rawRosterWhatsApp || "",
         aadhaarFront: (p as { aadhaarFront?: string }).aadhaarFront ?? "",
         aadhaarBack: (p as { aadhaarBack?: string }).aadhaarBack ?? "",
         dateOfBirth: (() => {
